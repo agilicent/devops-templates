@@ -2,7 +2,7 @@
 # Provided by Agilicent
 #
 # https://agilicent.com
-# https://github.com/agilicent/devops-templates/static-website-on-s3-cloudfront/readme.md
+# README: https://github.com/agilicent/devops-templates/tree/main/static-website-on-s3-cloudfront
 
 service: ${param=:service_name, env:SERVICE_NAME, 'website'}}
 
