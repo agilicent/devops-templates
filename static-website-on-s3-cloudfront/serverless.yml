@@ -1,0 +1,98 @@
+# Static Website on S3/CloudFront DevOps Template
+# Provided by Agilicent
+#
+# https://agilicent.com
+# https://github.com/agilicent/devops-templates/static-website-on-s3-cloudfront/readme.md
+
+service: ${param=:service_name, env:SERVICE_NAME, 'website'}}
+
+provider:
+  name: aws
+  runtime: nodejs14.x
+  stage: ${opt:stage, 'dev'}
+  region: 'us-east-1'
+  logRetentionInDays: 14
+
+resources:
+  Description: ${param:service_description, env:SERVICE_DESCRIPTION, 'My static website stack'}
+  Resources:
+    WebsiteBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${param:domain_name, env:DOMAIN_NAME}
+        AccessControl: PublicRead
+        WebsiteConfiguration:
+          IndexDocument: index.html
+          ErrorDocument: index.html
+      DeletionPolicy: Delete
+    WebsiteBucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket: !Ref 'WebsiteBucket'
+        PolicyDocument:
+          Statement:
+            - Sid: PublicReadForGetBucketObjects
+              Effect: Allow
+              Principal: '*'
+              Action: 's3:GetObject'
+              Resource: !Join ['', ['arn:aws:s3:::', !Ref 'WebsiteBucket', /*]]
+    WebsiteCloudfront:
+      Type: AWS::CloudFront::Distribution
+      DependsOn:
+        - WebsiteBucket
+      Properties:
+        DistributionConfig:
+          Comment: Cloudfront Distribution pointing to S3 bucket
+          Origins:
+            - DomainName: !Select [2, !Split ["/", !GetAtt WebsiteBucket.WebsiteURL]]
+              Id: S3Origin
+              CustomOriginConfig:
+                HTTPPort: '80'
+                HTTPSPort: '443'
+                OriginProtocolPolicy: http-only
+          Enabled: true
+          HttpVersion: 'http2'
+          DefaultRootObject: index.html
+          Aliases:
+            - ${param:domain_name, env:DOMAIN_NAME}
+          DefaultCacheBehavior:
+            AllowedMethods:
+              - GET
+              - HEAD
+            Compress: true
+            TargetOriginId: S3Origin
+            ForwardedValues:
+              QueryString: true
+              Cookies:
+                Forward: none
+            ViewerProtocolPolicy: redirect-to-https
+            DefaultTTL: 3600
+          CustomErrorResponses:
+            - ErrorCode: '404'
+              ResponsePagePath: "/404.html"
+              ResponseCode: '404'
+              ErrorCachingMinTTL: '30'
+          PriceClass: PriceClass_All
+          ViewerCertificate:
+            AcmCertificateArn: ${param:certificate_arn, env:CERTIFICATE_ARN}
+            SslSupportMethod: sni-only
+    WebsiteDNSName:
+      Type: AWS::Route53::RecordSetGroup
+      Properties:
+        HostedZoneName: ${param:hosted_zone, env:HOSTED_ZONE}
+        RecordSets:
+          - Name: ${param:domain_name, env:DOMAIN_NAME}
+            Type: A
+            AliasTarget:
+              HostedZoneId: Z2FDTNDATAQYW2
+              DNSName: !GetAtt [WebsiteCloudfront, DomainName]
+  Outputs:
+    BucketName:
+      Value: !Ref 'WebsiteBucket'
+      Description: Name of S3 bucket to hold website content
+    CloudfrontEndpoint:
+      Value: !GetAtt [WebsiteCloudfront, DomainName]
+      Description: Endpoint for Cloudfront distribution
+    CloudfrontDistributionID:
+      Value: !Ref 'WebsiteCloudfront'
+      Description: Distribution ID for the Cloudfront Distribution
